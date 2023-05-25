@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "fastapi-authlib"
-version = "0.1.0.dev1"
+version = "0.0.1"
 description = "A fastapi authlib authentication library"
 readme = "README.md"
 authors = ["qiang.xie <qiang.xie@zncdata.com>"]

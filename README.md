@@ -1,6 +1,6 @@
-# fastapi-oidc-support
+# fastapi-authlib
 
-fastapi-oidc-support provides easy integration between FastAPI and openid connection in your application.
+fastapi-authlib provides easy integration between FastAPI and openid connection in your application.
 Provides the initialization and dependencies of oidc, aiming to unify authentication management and
 reduce the difficulty of use.
 

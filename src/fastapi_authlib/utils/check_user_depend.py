@@ -23,7 +23,7 @@ async def check_auth_session(request: Request, session_id: str = Cookie(None)):
                     request.session.pop('user')
                     raise HTTPException(status_code=401, detail='The authentication expires')
                 exp = (datetime.now() + timedelta(hours=3)).timestamp()
-                user.update('exp', int(exp))
+                user['exp'] = int(exp)
                 request.session['user'] = user
             request.state.user = user
             return
