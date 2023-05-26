@@ -1,4 +1,5 @@
 """OIDC"""
+import threading
 from pathlib import Path
 
 from alembic import command
@@ -89,5 +90,6 @@ class OIDCClient:
 
     def init_oidc(self):
         """Init oidc"""
-        self.migrate_db()
+        thread = threading.Thread(target=self.migrate_db)
+        thread.start()
         self.init_app()
