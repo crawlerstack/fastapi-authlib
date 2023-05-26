@@ -22,6 +22,7 @@ from fastapi_authlib.utils.exceptions import (AuthenticationError,
                                               ObjectDoesNotExist, OIDCError)
 
 logger = logging.getLogger(__name__)
+oauth_client = OAuth(settings)
 
 
 class AuthService(EntityService[User, UserCreate, UserUpdate, UserSchema]):
@@ -46,7 +47,7 @@ class AuthService(EntityService[User, UserCreate, UserUpdate, UserSchema]):
         return GroupUserMapRepository()
 
     def __init__(self):
-        self.oauth_client = OAuth(settings)
+        self.oauth_client = oauth_client
         self.register_oauth()
 
     def register_oauth(self):
