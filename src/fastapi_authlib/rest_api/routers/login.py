@@ -39,4 +39,4 @@ async def auth(
     # clear session, three-party authentication uses cookies
     request.session.clear()
     token = encode_token(user, secret_key=settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return RedirectResponse(url=callback_url, headers={"WWW-Authenticate": f"Bearer {token}"})
+    return RedirectResponse(url=callback_url, headers={"authorization": f"Bearer {token}"})

@@ -26,5 +26,5 @@ def test_auth(client, mocker):
     auth = mocker.patch.object(AuthService, 'auth', return_value=token)
     response = client.get('/auth', params={'callback_url': 'https://foo.com'}, follow_redirects=False)
     assert response.status_code == 307
-    assert response.headers.get('www-authenticate')
+    assert response.headers.get('authorization')
     auth.assert_called_once()

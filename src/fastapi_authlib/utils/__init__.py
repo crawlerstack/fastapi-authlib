@@ -5,6 +5,8 @@ from typing import Optional, Tuple
 
 import jwt
 
+from fastapi_authlib.schemas.token import TokenSchema
+
 
 def get_authorization_scheme_param(
     authorization_header_value: Optional[str],
@@ -42,7 +44,7 @@ def encode_token(payload: dict, secret_key: str, algorithm: str) -> str:
     return jwt.encode(payload, secret_key, algorithm=algorithm)
 
 
-def decode_token(token: str, secret_key: str, algorithm: str) -> dict:
+def decode_token(token: str, secret_key: str, algorithm: str) -> TokenSchema:
     """
     Decode token
     :param token:
@@ -50,4 +52,5 @@ def decode_token(token: str, secret_key: str, algorithm: str) -> dict:
     :param algorithm:
     :return:
     """
-    return jwt.decode(token, secret_key, algorithms=[algorithm])
+    user = jwt.decode(token, secret_key, algorithms=[algorithm])
+    return TokenSchema(**user)

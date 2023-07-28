@@ -14,6 +14,7 @@ from fastapi_authlib.repository.user import UserRepository
 from fastapi_authlib.schemas.group import GroupCreate
 from fastapi_authlib.schemas.group_user_map import GroupUserMapCreate
 from fastapi_authlib.schemas.session import SessionCreate, SessionUpdate
+from fastapi_authlib.schemas.token import TokenSchema
 from fastapi_authlib.schemas.user import UserCreate, UserSchema, UserUpdate
 from fastapi_authlib.services.base import EntityService
 from fastapi_authlib.utils import get_utc_timestamp
@@ -268,8 +269,12 @@ class AuthService(EntityService[User, UserCreate, UserUpdate, UserSchema]):
         :param user:
         :return:
         """
-
-        iat = get_utc_timestamp()
-        exp = get_utc_timestamp(days=self.exp_period)
-        nst = get_utc_timestamp(minutes=self.nts_period)
-        return {'user_id': user.id, 'user_name': user.name, 'email': user.email, 'iat': iat, 'exp': exp, 'nst': nst}
+        token_schema = TokenSchema(
+            user_id=user.id,
+            user_name=user.name,
+            email=user.email,
+            iat=get_utc_timestamp(),
+            exp=get_utc_timestamp(days=self.exp_period),
+            nst=get_utc_timestamp(minutes=self.nts_period)
+        )
+        return token_schema.dict()
