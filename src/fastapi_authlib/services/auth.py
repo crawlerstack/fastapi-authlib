@@ -1,9 +1,7 @@
 """auth"""
 import logging
-from datetime import datetime, timedelta
 
-from authlib.integrations.base_client.errors import (OAuthError,
-                                                     TokenExpiredError)
+from authlib.integrations.base_client.errors import OAuthError
 from authlib.integrations.starlette_client import OAuth
 from starlette.requests import Request
 
@@ -18,11 +16,11 @@ from fastapi_authlib.schemas.group_user_map import GroupUserMapCreate
 from fastapi_authlib.schemas.session import SessionCreate, SessionUpdate
 from fastapi_authlib.schemas.user import UserCreate, UserSchema, UserUpdate
 from fastapi_authlib.services.base import EntityService
+from fastapi_authlib.utils import get_utc_timestamp
 from fastapi_authlib.utils.exceptions import (AuthenticationError,
                                               ObjectDoesNotExist, OIDCError)
 
 logger = logging.getLogger(__name__)
-oauth_client = OAuth(settings)
 
 
 class AuthService(EntityService[User, UserCreate, UserUpdate, UserSchema]):
@@ -30,6 +28,12 @@ class AuthService(EntityService[User, UserCreate, UserUpdate, UserSchema]):
     Auth service.
     """
     REPOSITORY_CLASS = UserRepository
+
+    def __init__(self):
+        self.oauth_client = OAuth(settings)
+        self.register_oauth()
+        self.exp_period = settings.EXP_PERIOD
+        self.nts_period = settings.NTS_PERIOD
 
     @property
     def session_repository(self):
@@ -46,10 +50,6 @@ class AuthService(EntityService[User, UserCreate, UserUpdate, UserSchema]):
         """Group user map repository"""
         return GroupUserMapRepository()
 
-    def __init__(self):
-        self.oauth_client = oauth_client
-        self.register_oauth()
-
     def register_oauth(self):
         """Register OAuth"""
         self.oauth_client.register(
@@ -58,23 +58,22 @@ class AuthService(EntityService[User, UserCreate, UserUpdate, UserSchema]):
             client_kwargs={
                 'scope': 'openid email profile',
                 'verify': False
-            })
+            }
+        )
 
-    async def login(self, request: Request, redirect_uri: str, **_):
+    async def login(self, request: Request, redirect_uri: str):
         """
         Login
         :param request:
         :param redirect_uri:
-        :param _:
         :return:
         """
         return await self.oauth_client.oauth.authorize_redirect(request, redirect_uri)
 
-    async def logout(self, user_id: int, **_):
+    async def logout(self, user_id: int):
         """
         Logout
         :param user_id:
-        :param _:
         :return:
         """
         # 清除数据库中的对应数据
@@ -90,7 +89,6 @@ class AuthService(EntityService[User, UserCreate, UserUpdate, UserSchema]):
         :param _:
         :return:
         """
-        # 进行认证处理, 认证的同时已经获取到了userinfo
         try:
             token = await self.oauth_client.oauth.authorize_access_token(request)
         except OAuthError as ex:
@@ -98,122 +96,180 @@ class AuthService(EntityService[User, UserCreate, UserUpdate, UserSchema]):
             raise OIDCError('OAuth Error') from ex
         userinfo = token.get('userinfo')
 
-        # 使用email作为后端唯一性判断指标
+        # the email is unique
         try:
-            users = await self.repository.get(search_fields={'email': userinfo.email})
-            user_id = users[0].id
-            active = users[0].active
-            user_obj_in = UserUpdate(name=userinfo.name,
-                                     nickname=userinfo.nickname,
-                                     picture=userinfo.picture,
-                                     active=True)
-            user = await self.repository.update_by_id(pk=user_id, obj_in=user_obj_in)
-            # session表中无user_id对应数据，如有，直接删除
+            user = await self.repository.get_by_email(userinfo.email)
+            active = user.active
+            user_obj_in = UserUpdate(
+                name=userinfo.name,
+                nickname=userinfo.nickname,
+                picture=userinfo.picture,
+                active=True
+            )
+            user = await self.repository.update_by_id(pk=user.id, obj_in=user_obj_in)
             if active:
-                # 删除
-                session = await self.session_repository.get_session_from_user_id(user_id)
+                session = await self.session_repository.get_session_from_user_id(user.id)
                 await self.session_repository.delete_by_id(session.id)
 
         except ObjectDoesNotExist:
-            # 使用email作为后端唯一性判断指标
-            user_obj_in = UserCreate(name=userinfo.name,
-                                     nickname=userinfo.nickname,
-                                     email=userinfo.email,
-                                     email_verified=userinfo.email_verified,
-                                     picture=userinfo.picture,
-                                     active=True,
-                                     )
+            user_obj_in = UserCreate(
+                name=userinfo.name,
+                nickname=userinfo.nickname,
+                email=userinfo.email,
+                email_verified=userinfo.email_verified,
+                picture=userinfo.picture,
+                active=True,
+            )
             user = await self.repository.create(obj_in=user_obj_in)
-        session_obj_in = SessionCreate(user_id=user.id, platform_name='gitlab', **token)
+
+        session_obj_in = SessionCreate(user_id=user.id, platform_name=settings.PLATFORM, **token)
         await self.session_repository.create(obj_in=session_obj_in)
         groups = userinfo.get('groups_direct')
         await self.save_group_and_group_user_map(groups, user)
-        exp = (datetime.now() + timedelta(hours=3)).timestamp()
-        return {'user_id': user.id, 'user_name': user.name, 'email': user.email, 'exp': int(exp)}
 
-    async def update_token(self, user_id: int) -> bool:
-        """Check token"""
+        payload = self.format_payload(user)
+        return payload
 
-        # 进行user的获取
-        # 通过user_id获取对应的id, 进而获取 oauth_token的信息进行刷新操作
-        try:
-            session = await self.session_repository.get_session_from_user_id(user_id=user_id)
-        except ObjectDoesNotExist:
-            return False
-        try:
-            token = await self.oauth_client.oauth.fetch_access_token(refresh_token=session.refresh_token,
-                                                                     grant_type='refresh_token')
-            # 刷新成功后保存token信息
-            await self.session_repository.update_by_id(pk=session.id,
-                                                       obj_in=SessionUpdate(**token))
-        except TokenExpiredError as ex:
-            logger.warning('Failed to refresh token, exception info: %s', ex)
-            # 清除token相关信息
-            await self.clear_token_info(pk=user_id)
-            return False
-        return True
-
-    async def user(self, user_id: int, **_) -> UserSchema:
-        """User"""
-        # 单独获取userinfo数据
-        # access_token的默认过期时间为3小时
-        # 根据user交换获取 access_token
-        user = await self.repository.get_by_id(user_id)
+    async def get_user_by_id(self, pk: int) -> UserSchema:
+        """
+        Get user by id
+        :param pk:
+        :return:
+        """
+        user = await self.repository.get_by_id(pk)
         if not user.active:
             raise AuthenticationError()
-        try:
-            session = await self.session_repository.get_session_from_user_id(user_id)
-            userinfo = await self.oauth_client.oauth.userinfo(token={'access_token': session.access_token})
-            user_obj_in = UserUpdate(name=userinfo.name,
-                                     nickname=userinfo.nickname,
-                                     picture=userinfo.picture)
-            await self.repository.update_by_id(pk=user_id, obj_in=user_obj_in)
-            await self.save_group_and_group_user_map(groups=userinfo.get('groups'), user=user)
-            return user
-        except Exception as ex:
-            logger.warning('Get userinfo error, exception info: %s', ex)
-            await self.clear_token_info(pk=user_id)
-            raise AuthenticationError() from ex
+        return user
 
-    async def clear_token_info(self, pk: int, **_):
+    async def clear_token_info(self, pk: int):
         """
         Clear token info
         :param pk:
-        :param _:
         :return:
         """
 
-        # 1. 清除 Session表中关于pk对应的user_id数据
-        await self.clear_session_with_user_id(user_id=pk)
-        # 2. 清除 User表中active字段进行False
-        await self.repository.update_by_id(pk=pk, obj_in=UserUpdate(active=False))
+        await self.clear_session_with_user_id(pk=pk)
+        await self.repository.update_by_id(
+            pk=pk,
+            obj_in=UserUpdate(active=False)
+        )
 
-    async def clear_session_with_user_id(self, user_id: int):
+    async def clear_session_with_user_id(self, pk: int):
         """
         Clear session with user id
-        :param user_id:
+        :param pk:
         :return:
         """
         try:
-            session = await self.session_repository.get_session_from_user_id(user_id=user_id)
+            session = await self.session_repository.get_session_from_user_id(user_id=pk)
             return await self.session_repository.delete_by_id(session.id)
         except ObjectDoesNotExist:
             logger.warning('Session does not exist')
 
-    async def save_group_and_group_user_map(self, groups: list, user: UserSchema):
-        """Save group and group user map"""
-        # 判断group是否已经保存
+    async def save_group_and_group_user_map(self, groups: list, user: UserSchema) -> None:
+        """
+        Save group and group user map
+        :param groups: group names
+        :param user:
+        :return:
+        """
+        group_ids = []
         for name in groups:
             try:
                 group = await self.group_repository.get_by_name(name=name)
             except ObjectDoesNotExist:
-                # 插入
                 group = await self.group_repository.create(obj_in=GroupCreate(name=name))
+            group_ids.append(group.id)
 
-            # group user map表逻辑处理
-            try:
-                await self.group_user_map_repository.get_by_group_and_user_id(group_id=group.id,
-                                                                              user_id=user.id)
-            except ObjectDoesNotExist:
+        try:
+            exist_groups = await self.group_user_map_repository.get_by_user_id(user_id=user.id)
+            # compare id
+            exist_group_ids = [group.group_id for group in exist_groups]
+            exist_group_map = {str(group.group_id): group.id for group in exist_groups}
+            # delete id
+            delete_ids = set(exist_group_ids) - set(group_ids)
+            for group_id in delete_ids:
+                await self.group_user_map_repository.delete_by_id(exist_group_map.get(str(group_id)))
+
+            # insert id
+            insert_ids = set(group_ids) - set(exist_group_ids)
+            for group_id in insert_ids:
                 await self.group_user_map_repository.create(
-                    obj_in=GroupUserMapCreate(group_id=group.id, user_id=user.id))
+                    obj_in=GroupUserMapCreate(
+                        group_id=group_id,
+                        user_id=user.id
+                    )
+                )
+
+        except ObjectDoesNotExist:
+            for group_id in group_ids:
+                await self.group_user_map_repository.create(
+                    obj_in=GroupUserMapCreate(
+                        group_id=group_id,
+                        user_id=user.id
+                    )
+                )
+
+    async def verify_user(self, pk: int) -> dict:
+        """
+        Verify user
+        :param pk: user id
+        :return:
+        """
+        # check user active
+        user = await self.repository.get_by_id(pk)
+        if not user.active:
+            raise AuthenticationError()
+
+        session = await self.session_repository.get_session_from_user_id(pk)
+        # check token
+        try:
+            userinfo = await self.oauth_client.oauth.userinfo(token={'access_token': session.access_token})
+        except Exception as ex:
+            logger.debug(
+                'Get userinfo with access_token of user %s error, try use refresh token, exception info: %s',
+                pk,
+                ex
+            )
+            try:
+                # check refresh_token
+                access_token = await self.oauth_client.oauth.fetch_access_token(
+                    refresh_token=session.refresh_token,
+                    grant_type='refresh_token'
+                )
+            except Exception as ex:
+                logger.debug('Get access_token with refresh_token of user %s error', pk)
+                await self.clear_token_info(pk=pk)
+                raise AuthenticationError('Token expired error') from ex
+
+            userinfo = await self.oauth_client.oauth.userinfo(token={'access_token': access_token})
+            # save token
+            await self.session_repository.update_by_id(
+                pk=session.id,
+                obj_in=SessionUpdate(**access_token)
+            )
+        # compare user and userinfo
+        update_fields = {key: userinfo.get(key)
+                         for key in ['name', 'nickname', 'picture']
+                         if getattr(user, key) != userinfo.get(key)}
+        if update_fields:
+            user_obj_in = UserUpdate(**update_fields)
+            user = await self.repository.update_by_id(pk=pk, obj_in=user_obj_in)
+
+        # compare group map
+        await self.save_group_and_group_user_map(groups=userinfo.get('groups'), user=user)
+
+        payload = self.format_payload(user)
+        return payload
+
+    def format_payload(self, user: UserSchema) -> dict:
+        """
+        Format payload with user
+        :param user:
+        :return:
+        """
+
+        iat = get_utc_timestamp()
+        exp = get_utc_timestamp(days=self.exp_period)
+        nst = get_utc_timestamp(minutes=self.nts_period)
+        return {'user_id': user.id, 'user_name': user.name, 'email': user.email, 'iat': iat, 'exp': exp, 'nst': nst}

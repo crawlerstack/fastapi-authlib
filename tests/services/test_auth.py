@@ -1,12 +1,11 @@
 """test auth"""
-
 import pytest
-from authlib.integrations.base_client import TokenExpiredError
 from pydantic import BaseModel, constr
 
 from fastapi_authlib.schemas.user import UserSchema
 from fastapi_authlib.services import AuthService
-from fastapi_authlib.utils.exceptions import AuthenticationError
+from fastapi_authlib.utils.exceptions import (AuthenticationError,
+                                              ObjectDoesNotExist)
 
 
 class UserInfo(BaseModel):
@@ -55,17 +54,23 @@ async def test_logout(init_session, session, service, user_id):
 
 
 @pytest.mark.parametrize(
-    'groups, user, expect_value',
+    'groups, user, expect_group_value, expect_map_value',
     [
-        [['user-groups/python-team'], UserSchema(id=1), 2],
-        [['user-groups/python-team2'], UserSchema(id=1), 3],
+        [['user-groups/python-team'], UserSchema(id=1), 2, 1],
+        [['user-groups/python-team2'], UserSchema(id=1), 3, 1],
+        [['user-groups/python-team2', 'user-groups/python-team3'], UserSchema(id=1), 4, 2]
     ]
 )
-async def test_save_group_and_group_user_map(init_group_user_map, service, session, groups, user, expect_value):
+async def test_save_group_and_group_user_map(
+    init_group_user_map, service, session, groups, user, expect_group_value, expect_map_value
+):
     """Test save group and group user map"""
     await service.save_group_and_group_user_map(groups, user)
     result = await service.group_repository.count()
-    assert result == expect_value
+    assert result == expect_group_value
+
+    group_map = await service.group_user_map_repository.get_by_user_id(user.id)
+    assert len(group_map) == expect_map_value
 
 
 @pytest.mark.parametrize(
@@ -98,7 +103,8 @@ async def test_save_group_and_group_user_map(init_group_user_map, service, sessi
                 'picture': 'picture',
                 'groups_direct': [
                     'user-groups/python-team'
-                ]})
+                ]}
+                                 )
         }, 0],
         [{
             'access_token': 'access_token',
@@ -127,15 +133,19 @@ async def test_save_group_and_group_user_map(init_group_user_map, service, sessi
                 'picture': 'picture',
                 'groups_direct': [
                     'user-groups/python-team'
-                ]})
+                ]}
+                                 )
         }, 1]
     ]
 )
 async def test_auth(init_session, session, service, mocker, token, expect_value):
     """Test auth"""
     mocker.patch.object(service, 'save_group_and_group_user_map')
-    authorize_access_token = mocker.patch.object(service.oauth_client.oauth, 'authorize_access_token',
-                                                 return_value=token)
+    authorize_access_token = mocker.patch.object(
+        service.oauth_client.oauth,
+        'authorize_access_token',
+        return_value=token
+    )
     before_count = await service.repository.count()
     await service.auth(mocker.MagicMock())
     authorize_access_token.assert_called_once()
@@ -144,78 +154,172 @@ async def test_auth(init_session, session, service, mocker, token, expect_value)
 
 
 @pytest.mark.parametrize(
-    'user_id, token, mocker_result, exist, expect_value',
+    'user_id, user_exist, user_active, userinfo_value, userinfo_exist, access_token_exist, access_token',
     [
-        [3, {"token": "token"}, False, False, 0],
-        [1, {'access_token': 'access_token',
-             'token_type': 'Bearer',
-             'expires_in': 7200,
-             'refresh_token': 'refresh_token',
-             'scope': 'openid email profile',
-             'created_at': 1681978523,
-             'id_token': 'id_token',
-             'expires_at': 1681985725, }, True, True, 2],
-        [1, {'access_token': 'access_token',
-             'token_type': 'Bearer',
-             'expires_in': 7200,
-             'refresh_token': 'refresh_token',
-             'scope': 'openid email profile',
-             'created_at': 1681978523,
-             'id_token': 'id_token',
-             'expires_at': 1681985725, }, False, True, 1]
+        (
+            1,
+            True,
+            True,
+            UserInfo(name="user1", nickname="user2", picture='picture.jpg', groups=['user-groups/python-team']),
+            False,
+            True,
+            {'access_token': 'access_token', 'refresh_token': 'refresh_token', 'expires_at': 1690424691}
+        ),
+        (
+            1,
+            True,
+            True,
+            UserInfo(name="user1", nickname="user2", picture='picture.jpg', groups=['user-groups/python-team']),
+            False,
+            False,
+            None
+        ),
+        (
+            1,
+            True,
+            True,
+            UserInfo(name="user1", nickname="user1", picture='picture.jpg', groups=['user-groups/python-team']),
+            True,
+            None,
+            None
+        ),
+        (
+            1,
+            True,
+            True,
+            UserInfo(name="user1", nickname="user2", picture='picture.jpg', groups=['user-groups/python-team']),
+            True,
+            None,
+            None
+        ),
+        (2, True, False, None, None, None, None),
+        (3, False, None, None, None, None, None)
     ]
 )
-async def test_update_token(init_session, session, service, mocker, user_id, token, mocker_result, exist, expect_value):
-    """Test update token"""
-    if not isinstance(user_id, int):
-        raise TypeError
-    if exist:
-        if mocker_result:
-            fetch_access_token = mocker.patch.object(service.oauth_client.oauth, 'fetch_access_token',
-                                                     return_value=token)
+async def test_verify_user(
+    init_session, session, service, mocker, user_id, user_exist, user_active, userinfo_value, userinfo_exist,
+    access_token_exist, access_token
+):
+    """Test verify_user"""
+    if user_exist:
+        if user_active:
+            if userinfo_exist:
+                userinfo = mocker.patch.object(
+                    service.oauth_client.oauth,
+                    'userinfo',
+                    return_value=userinfo_value
+                )
+            else:
+                mocker.patch.object(
+                    service.oauth_client.oauth,
+                    'userinfo',
+                    side_effect=Exception
+                )
+                if access_token_exist:
+                    mocker.patch.object(
+                        service.oauth_client.oauth,
+                        'fetch_access_token',
+                        return_value=access_token
+                    )
+                    userinfo = mocker.patch.object(
+                        service.oauth_client.oauth,
+                        'userinfo',
+                        return_value=userinfo_value
+                    )
+                else:
+                    mocker.patch.object(
+                        service.oauth_client.oauth,
+                        'fetch_access_token',
+                        side_effect=Exception
+                    )
+                    mocker.patch.object(
+                        service.oauth_client.oauth,
+                        'userinfo',
+                        side_effect=Exception
+                    )
+                    with pytest.raises(AuthenticationError):
+                        await service.verify_user(user_id)
+                    return
+
+            await service.verify_user(user_id)
+            userinfo.assert_called()
+
         else:
-            fetch_access_token = mocker.patch.object(service.oauth_client.oauth, 'fetch_access_token',
-                                                     side_effect=TokenExpiredError)
-        await service.update_token(user_id)
-        result = await service.session_repository.count()
-        assert result == expect_value
-        fetch_access_token.assert_called_once()
+            with pytest.raises(AuthenticationError):
+                await service.verify_user(user_id)
     else:
-        result = await service.update_token(user_id)
-        assert result is False
+        with pytest.raises(ObjectDoesNotExist):
+            await service.verify_user(user_id)
 
 
 @pytest.mark.parametrize(
-    'user_id, mocker_result, exist, expect_value',
+    'user_id, expect_type',
     [
-        [2, False, False, 0],
-        [1, True, True, 2],
-        [1, False, True, 1]
+        (1, True),
+        (2, 'AuthenticationError'),
+        (3, 'ObjectDoesNotExist')
     ]
 )
-async def test_user(init_session, session, service, mocker, user_id, mocker_result, exist, expect_value):
-    """Test user"""
-    mocker.patch.object(service, 'save_group_and_group_user_map')
-    if exist:
-        if mocker_result:
-            mocker_value = UserInfo(**{
-                'name': '李四',
-                'nickname': 'lisi',
-                'email': 'user3@example.com',
-                'email_verified': True,
-                'picture': 'picture.jpg',
-                'groups': [
-                    'user-groups/python-team'
-                ]})
-            userinfo = mocker.patch.object(service.oauth_client.oauth, 'userinfo', return_value=mocker_value)
-            await service.user(user_id)
-        else:
-            userinfo = mocker.patch.object(service.oauth_client.oauth, 'userinfo', side_effect=Exception)
-            with pytest.raises(AuthenticationError):
-                await service.user(user_id)
-        result = await service.session_repository.count()
-        assert result == expect_value
-        userinfo.assert_called_once()
-    else:
+async def test_get_user_by_id(init_session, session, service, user_id, expect_type):
+    """Test get_user_by_id"""
+    if isinstance(expect_type, bool):
+        user = await service.get_user_by_id(user_id)
+        assert user.id == user_id
+    elif expect_type == 'AuthenticationError':
         with pytest.raises(AuthenticationError):
-            await service.user(user_id)
+            await service.get_user_by_id(user_id)
+    else:
+        with pytest.raises(ObjectDoesNotExist):
+            await service.get_user_by_id(user_id)
+
+
+async def test_format_payload(service):
+    """Test format_payload"""
+    user_obj_in = UserSchema(
+        id=1,
+        name="user1",
+        email="user1@example.com"
+    )
+    user = service.format_payload(user_obj_in)
+    assert user_obj_in.id == user.get('user_id')
+    assert 'iat' in user.keys()
+
+
+@pytest.mark.parametrize(
+    'user_id, expect_value',
+    [
+        (1, True),
+        (3, False)
+    ]
+)
+async def test_clear_token_info(init_session, service, session, mocker, user_id, expect_value):
+    """Test clear_token_info"""
+    clear_session_with_user_id = mocker.patch.object(service, 'clear_session_with_user_id')
+    if expect_value:
+        before = await service.get_by_id(user_id)
+        await service.clear_token_info(user_id)
+        after = await service.get_by_id(user_id)
+        assert before.active != after.active
+    else:
+        with pytest.raises(ObjectDoesNotExist):
+            await service.clear_token_info(user_id)
+    clear_session_with_user_id.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    'user_id, expect_value',
+    [
+        (1, True),
+        (3, False)
+    ]
+)
+async def test_clear_session_with_user_id(init_session, service, session, user_id, expect_value, caplog):
+    """Test clear_session_with_user_id"""
+    if expect_value:
+        before = await service.session_repository.count()
+        await service.clear_session_with_user_id(user_id)
+        after = await service.session_repository.count()
+        assert before - 1 == after
+    else:
+        await service.clear_session_with_user_id(user_id)
+        assert 'Session does not exist' in caplog.text  # noqa

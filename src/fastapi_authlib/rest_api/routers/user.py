@@ -1,4 +1,5 @@
 """User"""
+
 from fastapi import APIRouter, Depends
 from starlette.requests import Request
 
@@ -18,4 +19,4 @@ async def user(
     User
     """
     user_info = request.state.user
-    return {'data': await service.user(user_info.get('user_id'))}
+    return {'data': await service.get_user_by_id(user_info.get('user_id'))}

@@ -6,7 +6,6 @@ from fastapi_authlib.repository.base import BaseRepository
 from fastapi_authlib.schemas.group_user_map import (GroupUserMapCreate,
                                                     GroupUserMapSchema,
                                                     GroupUserMapUpdate)
-from fastapi_authlib.utils.exceptions import ObjectDoesNotExist
 
 
 class GroupUserMapRepository(BaseRepository[GroupUserMap, GroupUserMapCreate, GroupUserMapUpdate, GroupUserMapSchema]):
@@ -16,11 +15,8 @@ class GroupUserMapRepository(BaseRepository[GroupUserMap, GroupUserMapCreate, Gr
     model = GroupUserMap
     model_schema = GroupUserMapSchema
 
-    async def get_by_group_and_user_id(self, group_id: int, user_id: int) -> GroupUserMapSchema:
-        """Get GroupUserMap by group_id and user_id"""
-        stmt = select(GroupUserMap).filter(GroupUserMap.group_id == group_id).filter(GroupUserMap.user_id == user_id)
-        group_user: GroupUserMap = await self.session.scalar(stmt)
-        if not group_user:
-            # Task does not exist
-            raise ObjectDoesNotExist()
-        return self.model_schema.from_orm(group_user)
+    async def get_by_user_id(self, user_id: int) -> list[GroupUserMapSchema]:
+        """Get GroupUserMap by user_id"""
+        stmt = select(GroupUserMap).filter(GroupUserMap.user_id == user_id)
+        group_users: list[GroupUserMap] = await self.session.scalars(stmt)
+        return [self.model_schema.from_orm(group_user) for group_user in group_users]

@@ -26,7 +26,8 @@ def settings():
         'oauth_client_id': 'client_id',
         'oauth_client_secret': 'client_secret',
         'oauth_conf_url': 'conf_url',
-        'session_secret': 'secret_key'
+        'secret_key': 'secret_key',
+        'platform': 'platform',
     }
     return oidc_settings
 
@@ -121,10 +122,14 @@ async def init_user():
     """Init user fixture."""
     async with db():
         users = [
-            User(name="user1", nickname="user1", email="user1@example.com", email_verified=True, picture='picture.jpg',
-                 active=True),
-            User(name="user2", nickname="user2", email="user2@example.com", email_verified=True, picture='picture.jpg',
-                 active=False),
+            User(
+                name="user1", nickname="user1", email="user1@example.com", email_verified=True, picture='picture.jpg',
+                active=True
+            ),
+            User(
+                name="user2", nickname="user2", email="user2@example.com", email_verified=True, picture='picture.jpg',
+                active=False
+            )
         ]
         db.session.add_all(users)
         await db.session.flush()
@@ -135,10 +140,14 @@ async def init_session(init_user):
     """Init session fixture."""
     async with db():
         oauth_tokens = [
-            Session(platform_name='gitlab', token_type='Bearer', access_token='access_token1',
-                    refresh_token='refresh_token', expires_at=1681285750, user_id=1),
-            Session(platform_name='gitlab', token_type='Bearer', access_token='access_token1',
-                    refresh_token='refresh_token', expires_at=1681285750, user_id=2),
+            Session(
+                platform_name='gitlab', token_type='Bearer', access_token='access_token1',
+                refresh_token='refresh_token', expires_at=1681285750, user_id=1
+            ),
+            Session(
+                platform_name='gitlab', token_type='Bearer', access_token='access_token1',
+                refresh_token='refresh_token', expires_at=1681285750, user_id=2
+            )
         ]
         db.session.add_all(oauth_tokens)
         await db.session.flush()

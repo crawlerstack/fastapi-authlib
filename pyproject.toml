@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "fastapi-authlib"
-version = "0.0.2"
+version = "0.0.4-alpha.1"
 description = "A fastapi authlib authentication library"
 readme = "README.md"
 authors = ["qiang.xie <qiang.xie@zncdata.com>"]
@@ -23,6 +23,7 @@ inflection = "^0.5.1"
 fastapi-sa = "^0.1.0"
 alembic = "^1.10.3"
 aiomysql = "^0.1.1"
+pyjwt = "^2.8.0"
 
 [tool.poetry.group.dev.dependencies]
 pylint = "^2.14.5"
@@ -44,6 +45,11 @@ asyncio_mode = "auto"
 testpaths = "tests"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
 log_cli = true
+filterwarnings = [
+    "error",
+    "ignore::sqlalchemy.exc.MovedIn20Warning",
+    "ignore::DeprecationWarning",
+]
 
 [tool.pylint.main]
 disable = [
@@ -82,12 +88,10 @@ load-plugins = ["pylint_pytest"]
 ignore-paths = [
     "src/fastapi_authlib/alembic",
     "src/fastapi_authlib/.local",
-    ".*/demo.py",
-    "tests/data.py"
 ]
 
 [tool.pylint.design]
 max-line-length = 120
-max-args = 11
+max-args = 12
 max-attributes = 10
 min-public-methods = 1

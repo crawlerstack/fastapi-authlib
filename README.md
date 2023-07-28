@@ -22,7 +22,7 @@ config = {
     'oauth_client_id': 'client_id',
     'oauth_client_secret': 'client_secret',
     'oauth_conf_url': 'conf_url',
-    'session_secret': 'secret_key',
+    'secret_key': 'secret_key',
     'router_prefix': '',
 }
 ```
@@ -66,7 +66,7 @@ from fastapi_sa.database import db
 from fastapi_sa.middleware import DBSessionMiddleware
 
 from fastapi_authlib.oidc import OIDCClient
-from fastapi_authlib.utils.check_user_depend import check_auth_session
+from fastapi_authlib.utils.auth_dependency import check_auth_depends
 from api_router import index
 from .settings import config
 
@@ -94,8 +94,12 @@ class OIDCDemo:
 
         # Customize the environment initialization
         # add dependencies to the interface that needs to be authenticated
-        app.include_router(index.router, tags=['index'], prefix=config.get('router_prefix'),
-                           dependencies=[Depends(check_auth_session)])
+        app.include_router(
+            index.router,
+            tags=['index'],
+            prefix=config.get('router_prefix'),
+            dependencies=[Depends(check_auth_depends)]
+        )
         app.add_middleware(DBSessionMiddleware)
         return app
 
@@ -113,6 +117,14 @@ if __name__ == '__main__':
   Usually database migration and oidc initialization are performed together
 - Register routing and other middleware, the DBSessionMiddleware is required
 - Start a fastapi server with uvicorn or other
+
+### Other
+
+Provide the following apis
+- /login
+- /auth
+- /logout
+- /users
 
 ## Based on
 

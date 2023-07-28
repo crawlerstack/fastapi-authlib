@@ -19,6 +19,5 @@ class GroupRepository(BaseRepository[Group, GroupCreate, GroupUpdate, GroupSchem
         stmt = select(Group).filter(Group.name == name)
         group: Group = await self.session.scalar(stmt)
         if not group:
-            # Task does not exist
             raise ObjectDoesNotExist()
         return self.model_schema.from_orm(group)

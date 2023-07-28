@@ -172,14 +172,3 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType, Mode
         if search_fields:
             stmt = self._search(stmt, search_fields)
         return await self.session.scalar(stmt)
-
-    async def exists(self, pk: int) -> bool:
-        """
-
-        :param pk:
-        :return:
-        """
-        obj = await self.session.get(self.model, pk)
-        if obj:
-            return True
-        raise ObjectDoesNotExist()
