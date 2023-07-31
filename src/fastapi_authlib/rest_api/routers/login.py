@@ -1,35 +1,32 @@
 """login"""
 
-from urllib.parse import urlencode
-
 from fastapi import APIRouter, Depends
 from starlette.requests import Request
-from starlette.responses import RedirectResponse
+from starlette.responses import Response
 
-from fastapi_authlib.config import settings
+from fastapi_authlib.messages.base import BaseMessage
 from fastapi_authlib.services import AuthService
-from fastapi_authlib.utils import encode_token
+from fastapi_authlib.utils.auth_dependency import set_header_authenticate
 
 router = APIRouter()
 
 
 @router.get('/login')
 async def login(
+    callback: str,
     request: Request,
     service: AuthService = Depends()
 ):
     """
     Login
     """
-    redirect_uri = request.url_for('auth')
-    url = f"{str(redirect_uri)}{'?' + urlencode(request.query_params) if request.query_params else ''}"
-    return await service.login(request, url)
+    return await service.login(request, callback)
 
 
-@router.get('/auth')
+@router.get('/auth', response_model=BaseMessage)
 async def auth(
-    callback_url: str,
     request: Request,
+    response: Response,
     service: AuthService = Depends(),
 ):
     """
@@ -38,5 +35,5 @@ async def auth(
     user = await service.auth(request)
     # clear session, three-party authentication uses cookies
     request.session.clear()
-    token = encode_token(user, secret_key=settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return RedirectResponse(url=callback_url, headers={"authorization": f"Bearer {token}"})
+    await set_header_authenticate(response, user)
+    return {'message': 'authentication successful.'}

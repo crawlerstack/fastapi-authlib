@@ -57,7 +57,7 @@ async def _verify_token(response: Response, token: str) -> dict:
 
         user = await AuthService().verify_user(user.user_id)
         # Assigned only when token changes
-        await _set_header_authenticate(response, user)
+        await set_header_authenticate(response, user)
         return user
 
     except DecodeError as ex:
@@ -75,7 +75,7 @@ async def _verify_token(response: Response, token: str) -> dict:
         ) from ex
 
 
-async def _set_header_authenticate(response: Response, user: dict) -> None:
-    """"""
+async def set_header_authenticate(response: Response, user: dict) -> None:
+    """Set header authenticate"""
     token = encode_token(user, settings.SECRET_KEY, settings.ALGORITHM)
     response.headers['authorization'] = f'Bearer {token}'
