@@ -1,0 +1,97 @@
+[tool.poetry]
+name = "fastapi-authlib"
+version = "0.0.4"
+description = "A fastapi authlib authentication library"
+readme = "README.md"
+authors = ["qiang.xie <qiang.xie@zncdata.com>"]
+license = "MIT"
+classifiers = [
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.10",
+]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+authlib = "^1.2.0"
+dynaconf = "^3.1.12"
+fastapi = "^0.95.0"
+uvicorn = "^0.21.1"
+itsdangerous = "^2.1.2"
+httpx = "^0.24.0"
+sqlalchemy = "1.4.46"
+inflection = "^0.5.1"
+fastapi-sa = "^0.1.0"
+alembic = "^1.10.3"
+aiomysql = "^0.1.1"
+pyjwt = "^2.8.0"
+
+[tool.poetry.group.dev.dependencies]
+pylint = "^2.14.5"
+isort = "^5.10.1"
+pytest = "^7.1.2"
+mkdocs = "^1.3.1"
+mkdocs-material = "^8.4.1"
+pytest-asyncio = "^0.21.0"
+aiosqlite = "^0.18.0"
+pytest-mock = "^3.10.0"
+pylint-pytest = "^1.1.2"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = "tests"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+log_cli = true
+filterwarnings = [
+    "error",
+    "ignore::sqlalchemy.exc.MovedIn20Warning",
+    "ignore::DeprecationWarning",
+]
+
+[tool.pylint.main]
+disable = [
+    "too-many-instance-attributes",
+    "broad-except",
+    "too-few-public-methods",
+    "unused-argument",
+    "no-name-in-module",
+    "fixme",
+    "duplicate-code",
+    "arguments-differ",
+    "redefined-outer-name"
+]
+good-names = [
+    "e",
+    "f",
+    "i",
+    "j",
+    "k",
+    "fp",
+    "ex",
+    "Run",
+    "_",
+    "pk",
+    "id",
+    "v",
+    "db",
+    "ModelType",
+    "CreateSchemaType",
+    "UpdateSchemaType",
+    "ModelSchemaType"
+]
+
+[tool.pylint.MASTER]
+load-plugins = ["pylint_pytest"]
+ignore-paths = [
+    "src/fastapi_authlib/alembic",
+    "src/fastapi_authlib/.local",
+]
+
+[tool.pylint.design]
+max-line-length = 120
+max-args = 12
+max-attributes = 10
+min-public-methods = 1
