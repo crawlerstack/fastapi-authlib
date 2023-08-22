@@ -35,7 +35,7 @@ async def check_auth_depends(
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail='No Authentication',
-            headers={"WWW-Authenticate": "Bearer"}
+            headers={"Authenticate": "Bearer"}
         )
 
     # Verify token validity
@@ -64,14 +64,14 @@ async def _verify_token(response: Response, token: str) -> dict:
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail='Invalid token',
-            headers={"WWW-Authenticate": "Bearer"}
+            headers={"Authenticate": "Bearer"}
         ) from ex
     except (AuthenticationError, Exception) as ex:
         logger.debug('Verify token error, exception info: %s', ex)
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail='Authentication failed',
-            headers={"WWW-Authenticate": "Bearer"}
+            headers={"Authenticate": "Bearer"}
         ) from ex
 
 
